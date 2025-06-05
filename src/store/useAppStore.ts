@@ -4,12 +4,12 @@ import { devtools } from 'zustand/middleware'
 import { Chapter, chaptersData } from '@/data/chaptersData'
 
 export type FilterStatus = "All" | "Not Started" | "In Progress" | "Completed";
-export type SortOption = "chapter" | "status" | "progress" | "weakChapters";
+export type SortOption = "chapter" | "progress";
 
 interface FilterState {
   subject: string;
-  class: string;
-  unit: string;
+  classes: string[];
+  units: string[];
   status: FilterStatus;
   showWeakChaptersOnly: boolean;
 }
@@ -18,13 +18,14 @@ interface AppState {
   // App-wide state
   isLoading: boolean
   user: null | { id: string; name: string; email: string }
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark' | 'system'
   
   // Chapter data and filters
   chapters: Chapter[]
   filteredChapters: Chapter[]
   filters: FilterState
   sortBy: SortOption
+  sortOrder: 'asc' | 'desc'
   
   // Actions
   setLoading: (loading: boolean) => void
@@ -36,8 +37,10 @@ interface AppState {
   updateChapterProgress: (chapterName: string, questionSolved: number) => void
   updateChapterStatus: (chapterName: string, status: Chapter['status']) => void
   toggleWeakChapter: (chapterName: string) => void
-  setFilter: (filterType: keyof FilterState, value: string | boolean) => void
+  setFilter: (filterType: keyof FilterState, value: string | string[] | boolean) => void
   setSortBy: (sortBy: SortOption) => void
+  setSortOrder: (order: 'asc' | 'desc') => void
+  toggleSortOrder: () => void
   applyFilters: () => void
   resetFilters: () => void
   
@@ -55,9 +58,9 @@ interface AppState {
 }
 
 const initialFilters: FilterState = {
-  subject: "All",
-  class: "All", 
-  unit: "All",
+  subject: "Physics",
+  classes: [],
+  units: [],
   status: "All",
   showWeakChaptersOnly: false
 }
@@ -68,11 +71,12 @@ export const useAppStore = create<AppState>()(
       // Initial state
       isLoading: false,
       user: null,
-      theme: 'light',
+      theme: 'system',
       chapters: chaptersData,
-      filteredChapters: chaptersData,
+      filteredChapters: chaptersData.filter(chapter => chapter.subject === "Physics"),
       filters: initialFilters,
       sortBy: 'chapter',
+      sortOrder: 'asc',
       
       // Basic actions
       setLoading: (loading) => set({ isLoading: loading }),
@@ -112,23 +116,23 @@ export const useAppStore = create<AppState>()(
       }),
       
       setSortBy: (sortBy) => set({ sortBy }),
+      setSortOrder: (order) => set({ sortOrder: order }),
+      toggleSortOrder: () => set((state) => ({ sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' })),
       
       applyFilters: () => set((state) => {
         let filtered = [...state.chapters];
         
         // Apply subject filter
-        if (state.filters.subject !== "All") {
-          filtered = filtered.filter(chapter => chapter.subject === state.filters.subject);
-        }
+        filtered = filtered.filter(chapter => chapter.subject === state.filters.subject);
         
         // Apply class filter
-        if (state.filters.class !== "All") {
-          filtered = filtered.filter(chapter => chapter.class === state.filters.class);
+        if (state.filters.classes.length > 0) {
+          filtered = filtered.filter(chapter => state.filters.classes.includes(chapter.class));
         }
         
         // Apply unit filter
-        if (state.filters.unit !== "All") {
-          filtered = filtered.filter(chapter => chapter.unit === state.filters.unit);
+        if (state.filters.units.length > 0) {
+          filtered = filtered.filter(chapter => state.filters.units.includes(chapter.unit));
         }
         
         // Apply status filter
@@ -143,27 +147,34 @@ export const useAppStore = create<AppState>()(
         
         // Apply sorting
         filtered.sort((a, b) => {
+          let comparison = 0;
+          
           switch (state.sortBy) {
             case 'chapter':
-              return a.chapter.localeCompare(b.chapter);
-            case 'status':
-              return a.status.localeCompare(b.status);
+              comparison = a.chapter.localeCompare(b.chapter);
+              break;
             case 'progress':
-              return b.questionSolved - a.questionSolved;
-            case 'weakChapters':
-              return Number(b.isWeakChapter) - Number(a.isWeakChapter);
+              const aTotalQuestions = Object.values(a.yearWiseQuestionCount).reduce((sum, count) => sum + count, 0);
+              const bTotalQuestions = Object.values(b.yearWiseQuestionCount).reduce((sum, count) => sum + count, 0);
+              comparison = b.questionSolved - a.questionSolved || bTotalQuestions - aTotalQuestions;
+              break;
             default:
               return 0;
           }
+          
+          return state.sortOrder === 'desc' ? -comparison : comparison;
         });
         
         return { filteredChapters: filtered };
       }),
       
-      resetFilters: () => set({
-        filters: initialFilters,
-        filteredChapters: chaptersData,
-        sortBy: 'chapter'
+      resetFilters: () => set((state) => {
+        const newFilters = { ...initialFilters, subject: state.filters.subject };
+        return {
+          filters: newFilters,
+          sortBy: 'chapter',
+          sortOrder: 'asc'
+        };
       }),
       
       // Computed getters
