@@ -6,6 +6,7 @@ export interface YearWiseQuestionCount {
   "2023": number;
   "2024": number;
   "2025": number;
+  [key: string]: number; // Add index signature
 }
 
 export interface Chapter {
